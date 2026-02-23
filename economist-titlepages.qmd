@@ -29,7 +29,7 @@ x = tibble(
 Data completeness and consistency checks. There seems to be some problem with 9 and 16 Nov 2019, we'll gloss over for now. Also, there are potentially multiple versions per issue, somehow indicated by filenames, we'll gloss over that here as well, and just take whatever is the first. 
 
 ```{r}
-stopifnot(first(x$date)=="2015-01-03", last(x$date)=="2026-02-21")
+stopifnot(first(x$date)=="2010-01-02", last(x$date)=="2026-02-21")
 table(x$extension)
 diffs = diff(x$date)
 table(diffs)
@@ -49,8 +49,11 @@ for(i in seq_len(nrow(x))) {
 }
 ```
 
+Setting `mem.maxVSize(vsize = Inf)` is a hack. Could use a more memory-efficient for loop, or just not store the images (`img`), only the summary states.
+
 ```{r}
 #| label: computestats
+mem.maxVSize(vsize = Inf)
 x = mutate(x, 
   avgrgb = map(img, function(z) apply(z, FUN = mean, MARGIN = 3)),
   avghsv = map(avgrgb, rgb2hsv, maxColorValue = 1),
@@ -76,11 +79,20 @@ for (i in seq_along(wh))
   )
 ```
 ```{r}
-#| label: focusonv
+#| label: focusonv1
 #| fig.dim: !expr c(6, 3)
 #| message: FALSE
 ggplot(x, aes(x = date, y = avgv)) + geom_smooth(span = 0.25, se = FALSE) +
       ylab("average brightness") +
+      scale_x_date(breaks = scales::breaks_width("1 year"),
+                   labels = scales::label_date("%Y"))
+```
+```{r}
+#| label: focusonv2
+#| fig.dim: !expr c(6, 3)
+#| message: FALSE
+ggplot(x, aes(x = date, y = as.numeric(avgv<0.5))) + geom_smooth(span = 0.25, se = FALSE) +
+      ylab("freq black") +
       scale_x_date(breaks = scales::breaks_width("1 year"),
                    labels = scales::label_date("%Y"))
 ```
