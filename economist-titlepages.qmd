@@ -1,0 +1,86 @@
+---
+title: "Economist title pages"
+author: "Wolfgang Huber"
+format: html
+---
+
+```{r}
+#| message: false
+#| echo: !expr -1
+#| warning: false
+library("dplyr")
+library("purrr")
+library("stringr")
+library("EBImage")
+library("ggplot2")
+```
+
+Read image filenames and extract dates
+```{r}
+#| label: read  
+x = tibble(
+  f = dir(recursive = TRUE, pattern = "^20.*\\.(jpg|avif)$", full.names = TRUE),
+  date = as.Date(str_sub(basename(f), 1, 8), format = "%Y%m%d"),
+  basename  = stringr::str_split_i(basename(f), pattern = fixed("."), i = 1),	
+  extension = stringr::str_split_i(basename(f), pattern = fixed("."), i = 2) 	
+) |> arrange(date)
+```
+
+Data completeness and consistency checks. There seems to be some problem with 9 and 16 Nov 2019, we'll gloss over for now. Also, there are potentially multiple versions per issue, somehow indicated by filenames, we'll gloss over that here as well, and just take whatever is the first. 
+
+```{r}
+stopifnot(first(x$date)=="2015-01-03", last(x$date)=="2026-02-21")
+table(x$extension)
+diffs = diff(x$date)
+table(diffs)
+x[2239:2252,]
+x = filter(x, !duplicated(date))
+dim(x)
+```
+
+```{r}
+#| label: readImages
+x = mutate(x, img = vector("list", nrow(x)))
+for(i in seq_len(nrow(x))) {
+  imgfile = file.path(dirname(x$f[i]), paste0(x$basename[i], ".jpeg"))
+  if (!file.exists(imgfile))
+    system2("/opt/homebrew/bin/magick", args = c(x$f[i], imgfile))
+  x$img[[i]] = readImage(imgfile)
+}
+```
+
+```{r}
+#| label: computestats
+x = mutate(x, 
+  avgrgb = map(img, function(z) apply(z, FUN = mean, MARGIN = 3)),
+  avghsv = map(avgrgb, rgb2hsv, maxColorValue = 1),
+  avgh   = map_dbl(avghsv, \(z) z[1]),
+  avgs   = map_dbl(avghsv, \(z) z[2]),
+  avgv   = map_dbl(avghsv, \(z) z[3]),
+  isred  = map_dbl(avgh, \(z)  ( z < 0.125 | z > 0.875))
+)
+```
+
+```{r}
+#| label: plot
+#| fig.dim: !expr c(6, 3)
+#| message: FALSE
+wh = c(hue = "avgh", saturation = "avgs", value = "avgv", `frequency of prevalent red` = "isred")
+for (i in seq_along(wh)) 
+  print(
+    ggplot(x, aes(x = date, y = .data[[wh[i]]])) + 
+      geom_point(alpha = 0.2, size = 0.2) + geom_smooth(span = 0.25, se = FALSE) +
+      ylab(names(wh)[i]) +
+      scale_x_date(breaks = scales::breaks_width("1 year"),
+                   labels = scales::label_date("%Y"))
+  )
+```
+```{r}
+#| label: focusonv
+#| fig.dim: !expr c(6, 3)
+#| message: FALSE
+ggplot(x, aes(x = date, y = avgv)) + geom_smooth(span = 0.25, se = FALSE) +
+      ylab("average brightness") +
+      scale_x_date(breaks = scales::breaks_width("1 year"),
+                   labels = scales::label_date("%Y"))
+```
